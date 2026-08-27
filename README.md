@@ -44,7 +44,9 @@ docker compose logs -f filebox
 2. توکن تانل را کپی کن و در `.env` بگذار: `TUNNEL_TOKEN=eyJ...`
 3. در تب **Public Hostname** تانل:
    - Subdomain: مثلاً `files` — Domain: دامنه خودت
-   - Service: `HTTP` → `filebox:8080`  ← (نام سرویس داکر، نه localhost)
+   - Service: `HTTP` → آدرسش بستگی دارد cloudflared کجا اجرا شود:
+     - اگر cloudflared را با `--profile tunnel` داخل همین compose بالا آوردی: `filebox:8080`
+     - اگر cloudflared روی خود هاست سرویس systemd است: `localhost:8080`
 4. بالا آوردن تانل کنار برنامه:
 
 ```bash
