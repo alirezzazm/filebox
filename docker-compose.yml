@@ -1,0 +1,39 @@
+services:
+  filebox:
+    build: .
+    container_name: filebox
+    restart: unless-stopped
+    # ------------------------------------------------------------------
+    # اینجا مشخص می‌شود روی چه لوکال‌هاستی بالا می‌آید:
+    #   http://localhost:8080
+    # فقط روی 127.0.0.1 باز است تا از بیرون شبکه خانگی دیده نشود؛
+    # دسترسی از اینترنت فقط از طریق تانل کلادفلر انجام می‌شود.
+    # اگر خواستی از گوشی داخل شبکه خانه هم باز شود: "8080:8080"
+    # ------------------------------------------------------------------
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./data:/data          # همه فایل‌ها و دیتابیس اینجا می‌ماند
+    environment:
+      PORT: 8080
+      DATA_DIR: /data
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-123}
+      UPLOAD_PASSWORD: ${UPLOAD_PASSWORD:-}
+      MAX_FILE_MB: ${MAX_FILE_MB:-2048}
+      SESSION_HOURS: ${SESSION_HOURS:-12}
+      TZ: Asia/Tehran
+
+  # ------------------------------------------------------------------
+  # تانل کلادفلر — با: docker compose --profile tunnel up -d
+  # اول توی داشبورد Cloudflare > Zero Trust > Networks > Tunnels
+  # یک تانل بساز، توکنش را در فایل .env بگذار و
+  # Public hostname آن را به http://filebox:8080 وصل کن.
+  # ------------------------------------------------------------------
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: filebox-tunnel
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    depends_on:
+      - filebox

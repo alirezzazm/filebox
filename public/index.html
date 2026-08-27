@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FileBox — انبار فایل شخصی</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">📦 <span>FileBox</span></div>
+  <nav class="tabs">
+    <button class="tab active" data-tab="upload">⬆️ آپلود</button>
+    <button class="tab" data-tab="chat">💬 چت</button>
+    <button class="tab" data-tab="panel">🔐 پنل دانلود</button>
+  </nav>
+  <div class="who">
+    <input id="nick" placeholder="اسم شما" maxlength="40">
+  </div>
+</header>
+
+<main>
+
+<!-- ================= آپلود ================= -->
+<section id="tab-upload" class="page active">
+  <div class="card">
+    <h2>آپلود فایل</h2>
+    <p class="muted">فایل‌ها خودکار بر اساس نوع و تاریخ مرتب می‌شوند.</p>
+
+    <div id="drop" class="drop">
+      <div class="drop-icon">⬆️</div>
+      <div><b>فایل‌ها را اینجا رها کنید</b></div>
+      <div class="muted">یا برای انتخاب کلیک کنید</div>
+      <input type="file" id="fileInput" multiple hidden>
+    </div>
+
+    <div id="upPassWrap" class="row hidden">
+      <input type="password" id="upPass" placeholder="رمز آپلود">
+    </div>
+
+    <div id="queue" class="queue"></div>
+    <div class="row">
+      <button id="btnUpload" class="primary" disabled>شروع آپلود</button>
+      <button id="btnClearQueue" class="ghost">پاک کردن لیست</button>
+      <span id="upStatus" class="muted"></span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= چت ================= -->
+<section id="tab-chat" class="page">
+  <div class="card chat-card">
+    <h2>چت <span class="muted small">— می‌توانید فایل هم بفرستید</span></h2>
+    <div id="messages" class="messages"></div>
+    <div id="chatAttach" class="attach hidden"></div>
+    <form id="chatForm" class="chat-form">
+      <label class="clip" title="پیوست فایل">📎<input type="file" id="chatFile" hidden></label>
+      <input id="chatText" placeholder="پیام..." autocomplete="off">
+      <button class="primary" type="submit">ارسال</button>
+    </form>
+  </div>
+</section>
+
+<!-- ================= پنل ================= -->
+<section id="tab-panel" class="page">
+
+  <div id="loginBox" class="card narrow">
+    <h2>🔐 ورود به پنل دانلود</h2>
+    <p class="muted">برای دیدن و دانلود فایل‌ها رمز را وارد کنید.</p>
+    <form id="loginForm" class="row">
+      <input type="password" id="pass" placeholder="رمز عبور" autocomplete="current-password">
+      <button class="primary" type="submit">ورود</button>
+    </form>
+    <div id="loginErr" class="err"></div>
+  </div>
+
+  <div id="panelBox" class="card hidden">
+    <div class="panel-head">
+      <h2>فایل‌ها</h2>
+      <div class="row">
+        <input id="search" placeholder="جستجو در نام فایل...">
+        <button id="btnZipAll" class="ghost">⬇️ زیپ همه</button>
+        <button id="btnLogout" class="ghost">خروج</button>
+      </div>
+    </div>
+    <div id="stats" class="muted small"></div>
+    <div id="cats" class="cats"></div>
+    <div id="fileList" class="files"></div>
+  </div>
+
+</section>
+
+</main>
+
+<footer class="foot muted small">
+  اجرا روی <code id="hostInfo">http://localhost:8080</code> — داده‌ها در پوشه <code>data/</code> کنار برنامه ذخیره می‌شود.
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

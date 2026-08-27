@@ -1,0 +1,16 @@
+{
+  "name": "filebox",
+  "version": "1.0.0",
+  "description": "Simple object storage: upload + chat + password-protected downloads",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}
