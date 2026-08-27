@@ -117,3 +117,27 @@ tar czf filebox-backup-$(date +%F).tar.gz data/
 npm install
 ADMIN_PASSWORD=mypass npm start
 ```
+
+## عیب‌یابی
+
+### Docker Hub با خطای 403 رد می‌کند (ایران)
+
+یک میرور داخلی در `/etc/docker/daemon.json` بگذار:
+
+```bash
+cat > /etc/docker/daemon.json <<JSON
+{
+  "registry-mirrors": [
+    "https://docker.arvancloud.ir",
+    "https://docker.mobinhost.com",
+    "https://registry.docker.ir"
+  ]
+}
+JSON
+systemctl restart docker
+```
+
+### خطای EACCES روی /data/uploads
+
+از نسخه‌های جدید حل شده — `docker-entrypoint.sh` مالکیت را خودکار اصلاح می‌کند.
+اگر باز دیدی، ایمیج را از نو بیلد کن: `docker compose up -d --build`
