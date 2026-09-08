@@ -3,7 +3,9 @@
   'use strict';
 
   var $ = function (s) { return document.querySelector(s); };
-  var cfg = { uploadProtected: false, maxFileMB: 2048, loggedIn: false };
+  var cfg = { uploadProtected: false, maxFileMB: 2048, loggedIn: false, quota: null };
+  var selected = new Set();
+  var lastData = null;
 
   var nick = $('#nick');
   nick.value = localStorage.getItem('fb_nick') || '';
@@ -16,15 +18,17 @@
     return (b / Math.pow(1024, i)).toFixed(i ? 1 : 0) + ' ' + u[i];
   }
   function fmtTime(iso) {
-    var d = new Date(iso);
-    return d.toLocaleString('fa-IR', { dateStyle: 'short', timeStyle: 'short' });
+    return new Date(iso).toLocaleString('fa-IR', { dateStyle: 'short', timeStyle: 'short' });
   }
   var ICONS = { image: '🖼️', video: '🎬', audio: '🎵', document: '📄', archive: '🗜️', code: '💻', other: '📎' };
+  var LABELS = { image: 'تصویر', video: 'ویدیو', audio: 'صدا', document: 'سند', archive: 'آرشیو', code: 'کد', other: 'سایر' };
+
   function esc(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
+  function quotaClass(p) { return p >= 90 ? 'crit' : p >= 70 ? 'warn' : 'ok'; }
 
   // ---------------- تب‌ها ----------------
   var tabs = document.querySelectorAll('.tab');
@@ -37,6 +41,44 @@
     if (name === 'panel' && cfg.loggedIn) loadFiles();
   }
   tabs.forEach(function (t) { t.onclick = function () { showTab(t.dataset.tab); }; });
+
+  // ---------------- نوار سهمیه ----------------
+  function renderQuotaMini(q) {
+    if (!q) return;
+    $('#quotaMini').innerHTML =
+      '<div class="qrow"><span>فضای مصرف‌شده</span>' +
+      '<b>' + fmtSize(q.used) + ' از ' + q.gb + ' GB</b></div>' +
+      '<div class="bar big"><i class="' + quotaClass(q.percent) + '" style="width:' + q.percent + '%"></i></div>' +
+      (q.full ? '<div class="err">فضا پر است — تا وقتی ادمین چیزی پاک نکند آپلود ممکن نیست.</div>'
+              : '<div class="muted small">' + fmtSize(q.remaining) + ' باقی مانده</div>');
+  }
+
+  function renderQuotaBig(d) {
+    var q = d.quota;
+    $('#quotaBig').innerHTML =
+      '<div class="qstat"><div class="big-num ' + quotaClass(q.percent) + '">' + q.percent + '%</div>' +
+      '<div><div><b>' + fmtSize(q.used) + '</b> از ' + q.gb + ' GB مصرف شده</div>' +
+      '<div class="muted small">' + fmtSize(q.remaining) + ' باقی مانده · ' + d.total + ' فایل</div></div></div>' +
+      '<div class="bar big"><i class="' + quotaClass(q.percent) + '" style="width:' + q.percent + '%"></i></div>';
+
+    if (d.disk) {
+      var low = d.disk.free < (d.minFreeDiskGB || 2) * 1024 * 1024 * 1024;
+      $('#diskInfo').innerHTML =
+        'فضای آزاد کل دیسک سرور: <b' + (low ? ' class="crit"' : '') + '>' + fmtSize(d.disk.free) +
+        '</b> از ' + fmtSize(d.disk.total) +
+        ' · کف مجاز ' + (d.minFreeDiskGB || 2) + ' GB' +
+        (low ? ' — <span class="crit">آپلود تا آزاد شدن فضا غیرفعال است</span>' : '');
+    }
+
+    var cats = Object.keys(d.sizes || {}).sort(function (a, b) { return d.sizes[b] - d.sizes[a]; });
+    $('#catBars').innerHTML = cats.map(function (c) {
+      var pct = q.used ? (d.sizes[c] / q.used * 100) : 0;
+      return '<div class="cat-bar"><div class="cl">' + ICONS[c] + ' ' + LABELS[c] +
+        ' <span class="muted small">(' + d.counts[c] + ')</span></div>' +
+        '<div class="bar"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
+        '<div class="cs">' + fmtSize(d.sizes[c]) + '</div></div>';
+    }).join('') || '<p class="muted small">هنوز فایلی نیست.</p>';
+  }
 
   // ---------------- آپلود ----------------
   var drop = $('#drop'), fileInput = $('#fileInput'), queueEl = $('#queue');
@@ -57,18 +99,6 @@
     for (var i = 0; i < list.length; i++) queue.push(list[i]);
     renderQueue();
   }
-  function renderQueue() {
-    queueEl.innerHTML = queue.map(function (f, i) {
-      return '<div class="qitem"><span>' + ICONS[extCat(f.name)] + '</span>' +
-        '<span class="nm">' + esc(f.name) + '</span>' +
-        '<span class="muted small">' + fmtSize(f.size) + '</span>' +
-        '<span class="x" data-i="' + i + '">✕</span></div>';
-    }).join('');
-    queueEl.querySelectorAll('.x').forEach(function (x) {
-      x.onclick = function () { queue.splice(+x.dataset.i, 1); renderQueue(); };
-    });
-    btnUpload.disabled = queue.length === 0;
-  }
   function extCat(name) {
     var e = (name.split('.').pop() || '').toLowerCase();
     if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'avif'].indexOf(e) > -1) return 'image';
@@ -78,6 +108,26 @@
     if (['zip', 'rar', '7z', 'tar', 'gz'].indexOf(e) > -1) return 'archive';
     if (['js', 'ts', 'py', 'go', 'sh', 'json', 'html', 'css'].indexOf(e) > -1) return 'code';
     return 'other';
+  }
+  function renderQueue() {
+    var total = queue.reduce(function (s, f) { return s + f.size; }, 0);
+    queueEl.innerHTML = queue.map(function (f, i) {
+      return '<div class="qitem"><span>' + ICONS[extCat(f.name)] + '</span>' +
+        '<span class="nm">' + esc(f.name) + '</span>' +
+        '<span class="muted small">' + fmtSize(f.size) + '</span>' +
+        '<span class="x" data-i="' + i + '">✕</span></div>';
+    }).join('');
+    if (queue.length) {
+      var warn = '';
+      if (cfg.quota && total > cfg.quota.remaining) {
+        warn = '<div class="err">این حجم از فضای باقی‌مانده بیشتر است و رد خواهد شد.</div>';
+      }
+      queueEl.innerHTML += '<div class="muted small">مجموع: ' + fmtSize(total) + '</div>' + warn;
+    }
+    queueEl.querySelectorAll('.x').forEach(function (x) {
+      x.onclick = function () { queue.splice(+x.dataset.i, 1); renderQueue(); };
+    });
+    btnUpload.disabled = queue.length === 0;
   }
 
   $('#btnClearQueue').onclick = function () { queue = []; renderQueue(); upStatus.textContent = ''; };
@@ -89,7 +139,7 @@
     queue.forEach(function (f) { fd.append('files', f); });
 
     var bar = document.createElement('div');
-    bar.className = 'bar';
+    bar.className = 'bar big';
     bar.innerHTML = '<i></i>';
     queueEl.after(bar);
 
@@ -102,17 +152,20 @@
     };
     xhr.onload = function () {
       bar.remove();
+      btnUpload.disabled = false;
+      var d = {};
+      try { d = JSON.parse(xhr.responseText); } catch (e) {}
       if (xhr.status === 200) {
-        var n = queue.length;
-        queue = []; renderQueue();
-        upStatus.textContent = '✅ ' + n + ' فایل آپلود شد';
+        upStatus.textContent = '✅ ' + queue.length + ' فایل آپلود شد';
+        queue = [];
+        if (d.quota) { cfg.quota = d.quota; renderQuotaMini(d.quota); }
+        renderQueue();
       } else {
-        var msg = 'خطا';
-        try { msg = JSON.parse(xhr.responseText).error; } catch (e) {}
-        upStatus.textContent = '❌ ' + msg;
+        upStatus.textContent = '❌ ' + (d.error || 'خطا');
+        if (d.quota) { cfg.quota = d.quota; renderQuotaMini(d.quota); }
       }
     };
-    xhr.onerror = function () { bar.remove(); upStatus.textContent = '❌ اتصال قطع شد'; };
+    xhr.onerror = function () { bar.remove(); btnUpload.disabled = false; upStatus.textContent = '❌ اتصال قطع شد'; };
     btnUpload.disabled = true;
     upStatus.textContent = 'در حال ارسال...';
     xhr.send(fd);
@@ -149,7 +202,7 @@
     if (up) headers['X-Upload-Password'] = up;
 
     $('#chatText').value = '';
-    var sending = chatAttached; clearAttach();
+    clearAttach();
 
     fetch('/api/messages', { method: 'POST', body: fd, headers: headers })
       .then(function (r) { return r.json(); })
@@ -182,14 +235,14 @@
           d.messages.forEach(renderMsg);
           lastSeq = d.last;
           if (atBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
-        } else if (d.last != null) lastSeq = Math.max(lastSeq, 0);
+        }
       })
       .catch(function () {});
   }
   setInterval(poll, 2500);
 
   // ---------------- پنل ----------------
-  var curCat = '', curQ = '';
+  var curCat = '', curQ = '', curSort = 'new';
 
   $('#loginForm').onsubmit = function (e) {
     e.preventDefault();
@@ -225,13 +278,56 @@
     curQ = e.target.value;
     searchTimer = setTimeout(loadFiles, 250);
   };
+  $('#sort').onchange = function (e) { curSort = e.target.value; loadFiles(); };
 
-  $('#btnZipAll').onclick = function () {
-    location.href = '/api/zip' + (curCat ? '?category=' + curCat : '');
+  // --- انتخاب گروهی ---
+  function syncSel() {
+    var n = selected.size;
+    var bytes = 0;
+    if (lastData) {
+      lastData.files.forEach(function (f) { if (selected.has(f.id)) bytes += f.size || 0; });
+    }
+    $('#selInfo').textContent = n ? n + ' فایل انتخاب شده · ' + fmtSize(bytes) : 'چیزی انتخاب نشده';
+    $('#btnZipSel').disabled = !n;
+    $('#btnDelSel').disabled = !n;
+    var boxes = document.querySelectorAll('.pickone');
+    var allOn = boxes.length > 0 && [].every.call(boxes, function (b) { return b.checked; });
+    $('#selAll').checked = allOn;
+  }
+
+  $('#selAll').onchange = function (e) {
+    document.querySelectorAll('.pickone').forEach(function (b) {
+      b.checked = e.target.checked;
+      if (e.target.checked) selected.add(b.dataset.id); else selected.delete(b.dataset.id);
+    });
+    syncSel();
+  };
+
+  $('#btnZipSel').onclick = function () {
+    if (!selected.size) return;
+    location.href = '/api/zip?ids=' + [].slice.call(selected).join(',');
+  };
+
+  $('#btnDelSel').onclick = function () {
+    var ids = [].slice.call(selected);
+    if (!ids.length) return;
+    if (!confirm('حذف ' + ids.length + ' فایل؟ این کار برگشت‌پذیر نیست.')) return;
+    fetch('/api/files/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.error) return alert(d.error);
+        selected.clear();
+        alert('✅ ' + d.removed + ' فایل حذف شد — ' + fmtSize(d.freed) + ' آزاد شد');
+        loadFiles();
+      });
   };
 
   function loadFiles() {
-    fetch('/api/files?q=' + encodeURIComponent(curQ) + '&category=' + curCat)
+    fetch('/api/files?q=' + encodeURIComponent(curQ) + '&category=' + curCat + '&sort=' + curSort)
       .then(function (r) {
         if (r.status === 401) {
           cfg.loggedIn = false;
@@ -242,40 +338,54 @@
         return r.json();
       })
       .then(function (d) {
-        $('#stats').textContent = 'مجموع: ' + d.total + ' فایل — ' + fmtSize(d.totalSize);
+        lastData = d;
+        cfg.quota = d.quota;
+        renderQuotaBig(d);
+        renderQuotaMini(d.quota);
 
         var cats = ['', 'image', 'video', 'audio', 'document', 'archive', 'code', 'other'];
-        var labels = { '': 'همه', image: 'تصویر', video: 'ویدیو', audio: 'صدا', document: 'سند', archive: 'آرشیو', code: 'کد', other: 'سایر' };
         $('#cats').innerHTML = cats.filter(function (c) { return c === '' || d.counts[c]; })
           .map(function (c) {
-            return '<span class="chip' + (c === curCat ? ' on' : '') + '" data-c="' + c + '">' +
-              (c ? ICONS[c] + ' ' : '') + labels[c] + (c ? ' (' + d.counts[c] + ')' : ' (' + d.total + ')') + '</span>';
+            var label = c ? ICONS[c] + ' ' + LABELS[c] + ' (' + d.counts[c] + ')' : 'همه (' + d.total + ')';
+            return '<span class="chip' + (c === curCat ? ' on' : '') + '" data-c="' + c + '">' + label + '</span>';
           }).join('');
         $('#cats').querySelectorAll('.chip').forEach(function (ch) {
-          ch.onclick = function () { curCat = ch.dataset.c; loadFiles(); };
+          ch.onclick = function () { curCat = ch.dataset.c; selected.clear(); loadFiles(); };
         });
 
         if (!d.files.length) {
           $('#fileList').innerHTML = '<p class="muted">فایلی پیدا نشد.</p>';
+          syncSel();
           return;
         }
         $('#fileList').innerHTML = d.files.map(function (f) {
           return '<div class="frow">' +
+            '<input type="checkbox" class="pickone" data-id="' + f.id + '"' + (selected.has(f.id) ? ' checked' : '') + '>' +
             '<span class="ic">' + (ICONS[f.category] || '📎') + '</span>' +
             '<div class="info"><div class="nm">' + esc(f.name) + '</div>' +
             '<div class="sub">' + fmtSize(f.size) + ' · ' + esc(f.uploader) + ' · ' + fmtTime(f.createdAt) +
             (f.source === 'chat' ? ' · از چت' : '') + '</div></div>' +
-            '<a href="/api/view/' + f.id + '" target="_blank">👁️</a>' +
-            '<a href="/api/download/' + f.id + '">⬇️ دانلود</a>' +
-            '<button class="del" data-id="' + f.id + '" data-n="' + esc(f.name) + '">🗑️</button>' +
+            '<a href="/api/view/' + f.id + '" target="_blank" title="پیش‌نمایش">👁️</a>' +
+            '<a href="/api/download/' + f.id + '" title="دانلود">⬇️</a>' +
+            '<button class="del" data-id="' + f.id + '" data-n="' + esc(f.name) + '" title="حذف">🗑️</button>' +
             '</div>';
         }).join('');
+
+        $('#fileList').querySelectorAll('.pickone').forEach(function (b) {
+          b.onchange = function () {
+            if (b.checked) selected.add(b.dataset.id); else selected.delete(b.dataset.id);
+            syncSel();
+          };
+        });
         $('#fileList').querySelectorAll('.del').forEach(function (b) {
           b.onclick = function () {
             if (!confirm('حذف «' + b.dataset.n + '» ؟')) return;
-            fetch('/api/files/' + b.dataset.id, { method: 'DELETE' }).then(loadFiles);
+            fetch('/api/files/' + b.dataset.id, { method: 'DELETE' })
+              .then(function (r) { return r.json(); })
+              .then(function () { selected.delete(b.dataset.id); loadFiles(); });
           };
         });
+        syncSel();
       })
       .catch(function () {});
   }
@@ -288,6 +398,7 @@
       $('#loginBox').classList.add('hidden');
       $('#panelBox').classList.remove('hidden');
     }
+    renderQuotaMini(c.quota);
     $('#hostInfo').textContent = location.origin;
     var h = (location.hash || '#upload').slice(1);
     showTab(['upload', 'chat', 'panel'].indexOf(h) > -1 ? h : 'upload');

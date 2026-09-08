@@ -22,6 +22,15 @@ const UPLOAD_PASSWORD = process.env.UPLOAD_PASSWORD || ''; // خالی = آپل�
 const MAX_FILE_MB = parseInt(process.env.MAX_FILE_MB || '2048', 10);
 const SESSION_HOURS = parseInt(process.env.SESSION_HOURS || '12', 10);
 
+// سهمیه کل فضا — پیش‌فرض ۵ گیگابایت
+const QUOTA_GB = parseFloat(process.env.STORAGE_QUOTA_GB || '5');
+const QUOTA_BYTES = Math.round(QUOTA_GB * 1024 * 1024 * 1024);
+
+// کف فضای آزاد دیسک. مستقل از سهمیه عمل می‌کند تا اگر چیز دیگری روی
+// سرور دیسک را پر کرد، آپلود باعث خفه شدن کل ماشین نشود.
+const MIN_FREE_DISK_GB = parseFloat(process.env.MIN_FREE_DISK_GB || '2');
+const MIN_FREE_DISK_BYTES = Math.round(MIN_FREE_DISK_GB * 1024 * 1024 * 1024);
+
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 // ---------------------------------------------------------------------------
@@ -50,6 +59,34 @@ function save() {
       console.error('ذخیره db ناموفق:', e.message);
     }
   }, 200);
+}
+
+// ---------------------------------------------------------------------------
+// محاسبه فضای مصرف‌شده
+// ---------------------------------------------------------------------------
+function usedBytes() {
+  return db.files.reduce((s, f) => s + (f.size || 0), 0);
+}
+
+function quotaInfo() {
+  const used = usedBytes();
+  return {
+    bytes: QUOTA_BYTES,
+    gb: QUOTA_GB,
+    used: used,
+    remaining: Math.max(0, QUOTA_BYTES - used),
+    percent: QUOTA_BYTES > 0 ? Math.min(100, Math.round((used / QUOTA_BYTES) * 1000) / 10) : 0,
+    full: used >= QUOTA_BYTES,
+  };
+}
+
+async function diskInfo() {
+  try {
+    const st = await fsp.statfs(DATA_DIR);
+    return { free: st.bfree * st.bsize, total: st.blocks * st.bsize };
+  } catch (e) {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -137,6 +174,60 @@ function publicFile(f) {
   };
 }
 
+function fmtGB(b) {
+  return (b / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
+// جلوی آپلودی که از سهمیه رد می‌شود را قبل از نوشتن روی دیسک می‌گیرد
+async function checkQuota(req, res, next) {
+  const incomingLen = parseInt(req.headers['content-length'] || '0', 10);
+
+  // محافظ دیسک — قبل از سهمیه بررسی می‌شود
+  const disk = await diskInfo();
+  if (disk && disk.free - incomingLen < MIN_FREE_DISK_BYTES) {
+    return res.status(507).json({
+      error:
+        'فضای دیسک سرور کم است (' + fmtGB(disk.free) + ' آزاد، کف مجاز ' +
+        MIN_FREE_DISK_GB + ' GB). آپلود موقتاً غیرفعال است.',
+      quota: quotaInfo(),
+    });
+  }
+
+  const q = quotaInfo();
+  if (q.full) {
+    return res.status(507).json({
+      error: 'فضای ذخیره‌سازی پر است (' + fmtGB(q.used) + ' از ' + QUOTA_GB + ' GB). اول چند فایل پاک کنید.',
+      quota: q,
+    });
+  }
+  const incoming = incomingLen;
+  if (incoming && q.used + incoming > QUOTA_BYTES) {
+    return res.status(507).json({
+      error:
+        'این آپلود از سهمیه رد می‌شود. فضای باقی‌مانده: ' + fmtGB(q.remaining) +
+        ' — حجم ارسالی: ' + fmtGB(incoming),
+      quota: q,
+    });
+  }
+  next();
+}
+
+// اگر با وجود بررسی اولیه از سهمیه رد شد، همان فایل‌های تازه را برمی‌گرداند
+async function rollbackIfOverQuota(added) {
+  if (usedBytes() <= QUOTA_BYTES) return null;
+  for (const rec of added) {
+    const i = db.files.findIndex((x) => x.id === rec.id);
+    if (i !== -1) db.files.splice(i, 1);
+    try {
+      await fsp.unlink(path.join(UPLOAD_DIR, rec.rel));
+    } catch (e) {
+      /* از قبل نبوده */
+    }
+  }
+  save();
+  return 'آپلود لغو شد چون از سهمیه ' + QUOTA_GB + ' گیگابایت رد می‌شد.';
+}
+
 // ---------------------------------------------------------------------------
 // احراز هویت پنل دانلود
 // ---------------------------------------------------------------------------
@@ -183,7 +274,7 @@ function checkUploadPassword(req, res, next) {
 // اپ
 // ---------------------------------------------------------------------------
 const app = express();
-app.set('trust proxy', true); // پشت تانل کلادفلر
+app.set('trust proxy', true); // پشت nginx / تانل کلادفلر
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -193,15 +284,18 @@ app.get('/api/config', (req, res) => {
     uploadProtected: Boolean(UPLOAD_PASSWORD),
     maxFileMB: MAX_FILE_MB,
     loggedIn: isLoggedIn(req),
+    quota: quotaInfo(),
   });
 });
 
 // ---- آپلود ---------------------------------------------------------------
-app.post('/api/upload', checkUploadPassword, upload.array('files', 50), (req, res) => {
+app.post('/api/upload', checkUploadPassword, checkQuota, upload.array('files', 50), async (req, res) => {
   const uploader = req.body.uploader || 'ناشناس';
   const added = (req.files || []).map((f) => registerFile(f, uploader, 'upload'));
+  const err = await rollbackIfOverQuota(added);
+  if (err) return res.status(507).json({ error: err, quota: quotaInfo() });
   save();
-  res.json({ ok: true, files: added.map(publicFile) });
+  res.json({ ok: true, files: added.map(publicFile), quota: quotaInfo() });
 });
 
 // ---- چت ------------------------------------------------------------------
@@ -211,10 +305,15 @@ app.get('/api/messages', (req, res) => {
   res.json({ messages: msgs, last: db.seq });
 });
 
-app.post('/api/messages', checkUploadPassword, upload.single('file'), (req, res) => {
+app.post('/api/messages', checkUploadPassword, checkQuota, upload.single('file'), async (req, res) => {
   const name = String(req.body.name || 'ناشناس').slice(0, 40);
   const text = String(req.body.text || '').slice(0, 4000);
   const fileRec = req.file ? registerFile(req.file, name, 'chat') : null;
+
+  if (fileRec) {
+    const err = await rollbackIfOverQuota([fileRec]);
+    if (err) return res.status(507).json({ error: err, quota: quotaInfo() });
+  }
   if (!text.trim() && !fileRec) return res.status(400).json({ error: 'پیام خالی است' });
 
   const msg = {
@@ -266,21 +365,42 @@ app.post('/api/logout', (req, res) => {
 });
 
 // ---- لیست و دانلود (نیاز به رمز) ----------------------------------------
-app.get('/api/files', requireAuth, (req, res) => {
+app.get('/api/files', requireAuth, async (req, res) => {
   const q = String(req.query.q || '').toLowerCase();
   const cat = req.query.category || '';
-  let list = db.files.slice().reverse();
+  const sort = req.query.sort || 'new'; // new | old | big | small | name
+  let list = db.files.slice();
+
   if (q) list = list.filter((f) => f.name.toLowerCase().includes(q) || f.uploader.toLowerCase().includes(q));
   if (cat) list = list.filter((f) => f.category === cat);
 
+  const sorters = {
+    new: (a, b) => b.createdAt.localeCompare(a.createdAt),
+    old: (a, b) => a.createdAt.localeCompare(b.createdAt),
+    big: (a, b) => (b.size || 0) - (a.size || 0),
+    small: (a, b) => (a.size || 0) - (b.size || 0),
+    name: (a, b) => a.name.localeCompare(b.name, 'fa'),
+  };
+  list.sort(sorters[sort] || sorters.new);
+
+  // آمار هر دسته: تعداد و حجم
   const counts = {};
-  for (const f of db.files) counts[f.category] = (counts[f.category] || 0) + 1;
+  const sizes = {};
+  for (const f of db.files) {
+    counts[f.category] = (counts[f.category] || 0) + 1;
+    sizes[f.category] = (sizes[f.category] || 0) + (f.size || 0);
+  }
 
   res.json({
     files: list.map((f) => Object.assign(publicFile(f), { rel: f.rel })),
     counts: counts,
+    sizes: sizes,
     total: db.files.length,
-    totalSize: db.files.reduce((s, f) => s + (f.size || 0), 0),
+    totalSize: usedBytes(),
+    filteredSize: list.reduce((s, f) => s + (f.size || 0), 0),
+    quota: quotaInfo(),
+    disk: await diskInfo(),
+    minFreeDiskGB: MIN_FREE_DISK_GB,
   });
 });
 
@@ -329,35 +449,68 @@ app.get('/api/zip', requireAuth, (req, res) => {
   zip.finalize();
 });
 
-app.delete('/api/files/:id', requireAuth, async (req, res) => {
-  const i = db.files.findIndex((x) => x.id === req.params.id);
-  if (i === -1) return res.status(404).json({ error: 'یافت نشد' });
+async function removeById(id) {
+  const i = db.files.findIndex((x) => x.id === id);
+  if (i === -1) return 0;
   const f = db.files.splice(i, 1)[0];
   try {
     await fsp.unlink(path.join(UPLOAD_DIR, f.rel));
   } catch (e) {
     /* فایل از قبل نبوده */
   }
+  return f.size || 0;
+}
+
+app.delete('/api/files/:id', requireAuth, async (req, res) => {
+  const before = db.files.length;
+  const freed = await removeById(req.params.id);
+  if (db.files.length === before) return res.status(404).json({ error: 'یافت نشد' });
   save();
-  res.json({ ok: true });
+  res.json({ ok: true, freed: freed, quota: quotaInfo() });
 });
 
-app.get('/healthz', (req, res) => res.json({ ok: true, files: db.files.length }));
+// حذف گروهی: با فهرست شناسه‌ها یا کل یک دسته
+app.post('/api/files/bulk-delete', requireAuth, async (req, res) => {
+  const body = req.body || {};
+  let ids = Array.isArray(body.ids) ? body.ids : [];
+  if (!ids.length && body.category) {
+    ids = db.files.filter((f) => f.category === body.category).map((f) => f.id);
+  }
+  if (!ids.length) return res.status(400).json({ error: 'چیزی برای حذف انتخاب نشده' });
+
+  let freed = 0;
+  let removed = 0;
+  for (const id of ids) {
+    const before = db.files.length;
+    freed += await removeById(id);
+    if (db.files.length < before) removed++;
+  }
+  save();
+  res.json({ ok: true, removed: removed, freed: freed, quota: quotaInfo() });
+});
+
+app.get('/healthz', (req, res) => {
+  const q = quotaInfo();
+  res.json({ ok: true, files: db.files.length, usedBytes: q.used, quotaBytes: q.bytes, percent: q.percent });
+});
 
 // خطاهای multer (مثل حجم زیاد)
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
-    return res.status(413).json({ error: 'خطای آپلود: ' + err.code + ' (سقف ' + MAX_FILE_MB + 'MB)' });
+    return res.status(413).json({ error: 'خطای آپلود: ' + err.code + ' (سقف ' + MAX_FILE_MB + 'MB برای هر فایل)' });
   }
   console.error(err);
   res.status(500).json({ error: 'خطای سرور' });
 });
 
 app.listen(PORT, HOST, () => {
+  const q = quotaInfo();
   console.log('──────────────────────────────────────────');
   console.log('  FileBox بالا آمد ✅');
   console.log('  آدرس محلی  : http://localhost:' + PORT);
   console.log('  مسیر داده  : ' + DATA_DIR);
-  console.log('  رمز پنل    : ' + (ADMIN_PASSWORD === 'change-me-123' ? '⚠️  پیش‌فرض (change-me-123) — حتماً عوضش کن!' : 'از فایل .env خوانده شد'));
+  console.log('  سهمیه فضا  : ' + fmtGB(q.used) + ' از ' + QUOTA_GB + ' GB (' + q.percent + '%)');
+  console.log('  کف دیسک    : ' + MIN_FREE_DISK_GB + ' GB');
+  console.log('  رمز پنل    : ' + (ADMIN_PASSWORD === 'change-me-123' ? '⚠️  پیش‌فرض — حتماً عوضش کن!' : 'از ENV خوانده شد'));
   console.log('──────────────────────────────────────────');
 });

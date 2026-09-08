@@ -1,0 +1,27 @@
+﻿// PM2 — اجرا روی سرور ویندوزی
+// متغیرها اینجا تعریف می‌شوند نه در شل، چون PM2 با S4U محیط شل را نمی‌بیند.
+module.exports = {
+  apps: [
+    {
+      name: 'filebox',
+      script: 'server.js',
+      cwd: 'C:\\Users\\Administrator\\Desktop\\claud\\filebox',
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      max_memory_restart: '300M',
+      env: {
+        NODE_ENV: 'production',
+        PORT: '3600',
+        HOST: '127.0.0.1',
+        DATA_DIR: 'C:\\Users\\Administrator\\Desktop\\claud\\filebox\\data',
+        STORAGE_QUOTA_GB: '5',
+        MAX_FILE_MB: '2048',
+        MIN_FREE_DISK_GB: '2',
+        SESSION_HOURS: '12',
+        ADMIN_PASSWORD: 'CHANGE_ME',
+        UPLOAD_PASSWORD: '',
+      },
+    },
+  ],
+};

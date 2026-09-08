@@ -102,3 +102,38 @@ button.ghost:hover{background:var(--card2)}
 .del:hover{border-color:var(--err); color:var(--err)}
 
 .foot{padding:14px 18px; text-align:center; border-top:1px solid var(--line)}
+
+/* ---------- سهمیه فضا ---------- */
+.quota-mini{margin:12px 0}
+.qrow{display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:13.5px}
+.bar.big{height:10px; border-radius:6px}
+.bar i.ok{background:var(--ok)}
+.bar i.warn{background:#f0a500}
+.bar i.crit{background:var(--err)}
+.qstat{display:flex; align-items:center; gap:16px; margin:10px 0}
+.big-num{font-size:34px; font-weight:700; line-height:1}
+.big-num.ok{color:var(--ok)}
+.big-num.warn{color:#f0a500}
+.big-num.crit{color:var(--err)}
+.cat-bars{display:flex; flex-direction:column; gap:8px; margin-top:16px}
+.cat-bar{display:grid; grid-template-columns:130px 1fr 80px; align-items:center; gap:10px; font-size:13px}
+.cat-bar .cs{text-align:left; color:var(--muted); direction:ltr}
+#diskInfo{margin-top:14px; padding-top:12px; border-top:1px solid var(--line)}
+
+/* ---------- انتخاب گروهی ---------- */
+.bulkbar{display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 0; margin-bottom:8px; border-bottom:1px solid var(--line)}
+.bulkbar .spacer{flex:1}
+.pick{display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13.5px}
+input[type=checkbox]{width:16px; height:16px; accent-color:var(--pri); cursor:pointer}
+button.danger{border-color:var(--err); color:var(--err); background:transparent}
+button.danger:hover:not(:disabled){background:var(--err); color:#fff}
+button:disabled{opacity:.4; cursor:not-allowed}
+select{background:var(--card2); border:1px solid var(--line); color:var(--fg); padding:9px 12px; border-radius:10px}
+.frow .pickone{flex-shrink:0}
+
+@media (max-width:640px){
+  .cat-bar{grid-template-columns:100px 1fr 70px; font-size:12px}
+  .frow a,.frow button{padding:5px 8px}
+}
+
+.crit{color:var(--err)}
