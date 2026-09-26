@@ -80,15 +80,36 @@
 
   <div id="panelBox" class="hidden">
 
-    <!-- آمار فضا -->
+    <!-- محل ذخیره و فضا -->
     <div class="card">
       <div class="panel-head">
-        <h2>💾 فضای مصرف‌شده</h2>
+        <h2>💾 ذخیره‌سازی</h2>
         <button id="btnLogout" class="ghost">خروج</button>
       </div>
-      <div id="quotaBig"></div>
+
+      <div id="targetBox" class="target-box hidden">
+        <span>مقصد آپلودهای جدید:</span>
+        <div class="seg">
+          <button data-target="github">☁️ گیت‌هاب</button>
+          <button data-target="local">🖥️ همین سرور</button>
+        </div>
+        <span id="targetNote" class="muted small"></span>
+      </div>
+
+      <div class="stores">
+        <div class="store">
+          <div class="store-h">🖥️ روی همین سرور</div>
+          <div id="quotaBig"></div>
+          <div id="diskInfo" class="muted small"></div>
+        </div>
+        <div class="store" id="ghStore">
+          <div class="store-h">☁️ روی گیت‌هاب</div>
+          <div id="ghQuota"></div>
+          <div id="ghInfo" class="muted small"></div>
+        </div>
+      </div>
+
       <div id="catBars" class="cat-bars"></div>
-      <div id="diskInfo" class="muted small"></div>
     </div>
 
     <!-- فایل‌ها -->
@@ -108,13 +129,16 @@
       </div>
 
       <div id="cats" class="cats"></div>
+      <div id="wheres" class="cats"></div>
 
       <div class="bulkbar">
         <label class="pick"><input type="checkbox" id="selAll"> انتخاب همه</label>
         <span id="selInfo" class="muted small">چیزی انتخاب نشده</span>
         <span class="spacer"></span>
+        <button id="btnToGh" class="ghost gh-only" disabled title="انتقال انتخاب‌شده‌ها به گیت‌هاب">☁️ به گیت‌هاب</button>
+        <button id="btnToLocal" class="ghost gh-only" disabled title="انتقال انتخاب‌شده‌ها به همین سرور">🖥️ به سرور</button>
         <button id="btnZipSel" class="ghost" disabled>⬇️ دانلود زیپ</button>
-        <button id="btnDelSel" class="danger" disabled>🗑️ حذف انتخاب‌شده‌ها</button>
+        <button id="btnDelSel" class="danger" disabled>🗑️ حذف</button>
       </div>
 
       <div id="fileList" class="files"></div>

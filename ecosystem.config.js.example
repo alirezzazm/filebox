@@ -18,6 +18,13 @@ module.exports = {
         STORAGE_QUOTA_GB: '5',
         MAX_FILE_MB: '2048',
         MIN_FREE_DISK_GB: '2',
+        // ذخیره روی گیت‌هاب — خالی بماند یعنی فقط همین سرور
+        GITHUB_TOKEN: '',
+        GITHUB_REPO: 'alirezzazm/filebox-data',
+        GITHUB_BRANCH: 'main',
+        GITHUB_QUOTA_GB: '20',
+        STORAGE_BACKEND: 'github',
+        DB_SYNC_SECONDS: '20',
         SESSION_HOURS: '12',
         ADMIN_PASSWORD: 'CHANGE_ME',
         UPLOAD_PASSWORD: '',

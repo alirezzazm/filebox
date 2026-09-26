@@ -10,7 +10,7 @@ COPY package.json ./
 RUN npm install --omit=dev && npm cache clean --force
 
 # کد برنامه
-COPY server.js ./
+COPY server.js storage-github.js ./
 COPY public ./public
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

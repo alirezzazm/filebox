@@ -137,3 +137,27 @@ select{background:var(--card2); border:1px solid var(--line); color:var(--fg); p
 }
 
 .crit{color:var(--err)}
+
+/* ---------- گیت‌هاب / محل ذخیره ---------- */
+.target-box{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:12px 0 4px; padding:10px 12px; background:var(--card2); border-radius:10px; font-size:13.5px}
+.seg{display:inline-flex; border:1px solid var(--line); border-radius:10px; overflow:hidden}
+.seg button{border:0; border-radius:0; padding:7px 14px; background:transparent}
+.seg button.on{background:var(--pri); color:#fff}
+.stores{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:12px}
+.store{background:var(--card2); border-radius:12px; padding:12px 14px}
+.store-h{font-weight:600; font-size:14px}
+.store .qstat{margin:8px 0}
+.store .big-num{font-size:26px}
+.store #diskInfo{border-top:0; padding-top:0; margin-top:8px}
+.store a{color:var(--pri)}
+.okc{color:var(--ok)}
+.loc{margin-top:4px}
+.badge{display:inline-block; font-size:11px; padding:1px 8px; border-radius:999px; border:1px solid var(--line); background:var(--card)}
+.badge.gh{border-color:#6e7cff66}
+.badge.loc{border-color:#2ecc7166}
+.badge.pend{border-color:#f0a50099; color:#f0a500}
+.badge.bad{border-color:#ff5c5c99; color:var(--err); cursor:help}
+.frow.dead .nm{opacity:.55; text-decoration:line-through}
+.small-chip{font-size:12px; padding:4px 10px}
+#wheres{margin-top:-4px}
+@media (max-width:640px){ .stores{grid-template-columns:1fr} }
