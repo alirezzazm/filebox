@@ -51,6 +51,15 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 // ---------------------------------------------------------------------------
 // دیتابیس ساده روی فایل (JSON) با نوشتن اتمیک
 // ---------------------------------------------------------------------------
+// نسخه‌های قبلی نام فایل را latin1 می‌خواندند و «گزارش» به «Ú¯Ø²Ø§Ø±Ø´» تبدیل
+// می‌شد. بایت‌ها سالم مانده‌اند، پس برگرداندنشان دقیق است. فقط یک بار اجرا
+// می‌شود تا نام لاتین واقعی که بعداً آپلود شود دست نخورد.
+function repairName(n) {
+  if (typeof n !== 'string' || !/[\u0080-ÿ]/.test(n) || /[^\u0000-ÿ]/.test(n)) return n;
+  const fixed = Buffer.from(n, 'latin1').toString('utf8');
+  return fixed.indexOf('�') === -1 ? fixed : n;
+}
+
 function normalizeDb(d) {
   d = d || {};
   if (!Array.isArray(d.files)) d.files = [];
@@ -58,6 +67,19 @@ function normalizeDb(d) {
   if (!d.seq) d.seq = 0;
   if (!d.settings) d.settings = {};
   for (const f of d.files) if (!f.backend) f.backend = 'local';
+  if (!d.namesRepaired) {
+    let n = 0;
+    for (const f of d.files) {
+      const fixed = repairName(f.name);
+      if (fixed !== f.name) {
+        f.name = fixed;
+        n++;
+      }
+    }
+    for (const m of d.messages) if (m.file) m.file.name = repairName(m.file.name);
+    d.namesRepaired = true;
+    if (n) console.log('  نام ' + n + ' فایل که با latin1 خراب شده بود اصلاح شد');
+  }
   return d;
 }
 
