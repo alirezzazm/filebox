@@ -241,6 +241,28 @@ pm2 save
 سرور می‌افتد. ضمناً سقف ۱۰۰ مگابایتی پلن رایگان همان‌جا هم اعمال می‌شود؛
 برای آپلود فایل بزرگ‌تر باید رکورد را DNS-only کرد.
 
+## استقرار روی لینوکس با داکر + nginx میزبان
+
+نسخه‌ی فعلی `mainfile.emanstore.ir` این‌طور بالاست. کانفیگ nginx در
+`deploy/nginx-linux-filebox.conf` است.
+
+```bash
+git clone git@github-filebox:alirezzazm/filebox.git /opt/filebox
+cd /opt/filebox && cp .env.example .env && chmod 600 .env   # رمز، FILEBOX_PORT و GITHUB_* را پر کن
+docker compose up -d --build
+cp deploy/nginx-linux-filebox.conf /etc/nginx/sites-available/filebox
+ln -s /etc/nginx/sites-available/filebox /etc/nginx/sites-enabled/
+certbot certonly --webroot -w /var/www/html -d mainfile.emanstore.ir --deploy-hook "systemctl reload nginx"
+nginx -t && systemctl reload nginx
+```
+
+مسیر `/.well-known/acme-challenge/` در بلوک ۴۴۳ هم هست، چون وقتی کلادفلر
+http را به https ریدایرکت می‌کند، چالش certbot از همان‌جا می‌رسد.
+
+اگر nginx میزبان `cloudflare-realip` دارد، `$remote_addr` در لاگ IP بازدیدکننده
+است نه کلادفلر؛ برای دیدن اینکه اتصال واقعاً از کجا آمده `$realip_remote_addr`
+را لاگ کن.
+
 ## اجرا بدون داکر
 
 ```bash
