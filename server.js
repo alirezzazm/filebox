@@ -837,9 +837,14 @@ app.get('/api/download/:id', requireAuth, async (req, res) => {
   }
 });
 
-// پیش‌نمایش فقط برای نوع‌های امن. بقیه (html، svg و ...) اجباراً دانلود می‌شوند؛
-// چون آپلود بدون رمز است، نمایش inline آن‌ها روی همین دامنه یعنی XSS در پنل ادمین.
+// پیش‌نمایش inline فقط برای نوع‌های بی‌خطر.
 const INLINE_SAFE = /^(image\/(png|jpe?g|gif|webp|avif|bmp)|video\/[\w.+-]+|audio\/[\w.+-]+|application\/pdf|text\/plain)$/i;
+
+// HTML و SVG ممکن است اسکریپت داشته باشند و آپلود بدون رمز است. داخل سندباکس
+// بدون allow-same-origin باز می‌شوند: اسکریپت اجرا می‌شود (تا نمودارها رندر شوند)
+// ولی در یک origin ایزوله، پس به کوکی ورود و API پنل دسترسی ندارد، فرم
+// نمی‌فرستد و صفحه‌ی اصلی را جابه‌جا نمی‌کند.
+const SANDBOXED = { html: 'text/html; charset=utf-8', htm: 'text/html; charset=utf-8', svg: 'image/svg+xml' };
 
 app.get('/api/view/:id', requireAuth, async (req, res) => {
   const rec = findFile(req.params.id);
@@ -847,7 +852,13 @@ app.get('/api/view/:id', requireAuth, async (req, res) => {
   try {
     const r = await openRead(rec);
     const mime = String(rec.mime || '');
-    if (INLINE_SAFE.test(mime)) {
+    const sandboxType = SANDBOXED[path.extname(rec.name).slice(1).toLowerCase()];
+    if (sandboxType) {
+      res.set('Content-Type', sandboxType);
+      res.set('Content-Disposition', 'inline');
+      res.set('Content-Security-Policy', 'sandbox allow-scripts allow-popups');
+      res.set('Referrer-Policy', 'no-referrer');
+    } else if (INLINE_SAFE.test(mime)) {
       res.type(mime);
       res.set('Content-Disposition', 'inline');
       if (mime !== 'application/pdf') res.set('Content-Security-Policy', "default-src 'none'; sandbox");
@@ -1013,8 +1024,15 @@ async function main() {
     }
   }
 
-  // وضعیت اتصال گیت‌هاب را هر ۵ دقیقه تازه کن
-  if (gh.enabled) setInterval(() => gh.check().catch(() => {}), 5 * 60000).unref();
+  // وضعیت اتصال گیت‌هاب: هر ۵ دقیقه، ولی وقتی قطع است هر دقیقه
+  if (gh.enabled) {
+    const recheck = () => {
+      gh.check()
+        .catch(() => {})
+        .then(() => setTimeout(recheck, gh.status().ok ? 5 * 60000 : 60000).unref());
+    };
+    setTimeout(recheck, gh.status().ok ? 5 * 60000 : 60000).unref();
+  }
 
   app.listen(PORT, HOST, () => {
     const q = quotaInfo();

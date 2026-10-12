@@ -68,6 +68,12 @@ function createGithubStore(opts) {
   // ---- وضعیت اتصال --------------------------------------------------------
   let lastCheck = { ok: false, error: 'هنوز بررسی نشده', at: 0 };
 
+  // هر پاسخ موفق از گیت‌هاب یعنی اتصال برقرار است؛ یک تایم‌اوت در بررسی دوره‌ای
+  // نباید پنل را «قطع» نشان دهد وقتی آپلود و دانلود کار می‌کنند.
+  function noteSuccess() {
+    if (!lastCheck.ok) lastCheck = Object.assign({}, lastCheck, { ok: true, error: null, at: Date.now() });
+  }
+
   async function check() {
     if (!enabled) {
       lastCheck = { ok: false, error: 'GITHUB_TOKEN یا GITHUB_REPO تنظیم نشده', at: Date.now() };
@@ -151,7 +157,10 @@ function createGithubStore(opts) {
             } catch (e) {
               data = { raw: buf.slice(0, 200) };
             }
-            if (res.statusCode === 201) resolve(data);
+            if (res.statusCode === 201) {
+              noteSuccess();
+              resolve(data);
+            }
             else reject(fail('آپلود asset: HTTP ' + res.statusCode + ' ' + JSON.stringify(data).slice(0, 200), res.statusCode));
           });
         }
@@ -197,6 +206,7 @@ function createGithubStore(opts) {
     if (!res.ok) {
       throw fail('دانلود از گیت‌هاب: HTTP ' + res.status, res.status);
     }
+    noteSuccess();
     return {
       stream: Readable.fromWeb(res.body),
       size: parseInt(res.headers.get('content-length') || '0', 10) || null,
@@ -261,6 +271,7 @@ function createGithubStore(opts) {
 
       const r = await apiJson('PUT', url, body);
       if (r.status === 200 || r.status === 201) {
+        noteSuccess();
         shaCache.set(filePath, r.data.content.sha);
         return;
       }
